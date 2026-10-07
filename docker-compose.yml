@@ -1,0 +1,76 @@
+services:
+  api:
+    build:
+      context: ./backend
+    container_name: geotrack-api
+    ports:
+      - "8080:80"
+    environment:
+      APP_ENV: local
+      DB_HOST: mysql
+      DB_PORT: 3306
+      DB_NAME: geotrack
+      DB_USER: geotrack
+      DB_PASSWORD: geotrack
+      ELASTICSEARCH_HOST: http://elasticsearch:9200
+    volumes:
+      - ./backend/src:/var/www/html/src
+      - ./backend/public:/var/www/html/public
+      - ./backend/docker/apache.conf:/etc/apache2/sites-available/000-default.conf:ro
+    depends_on:
+      mysql:
+        condition: service_healthy
+      elasticsearch:
+        condition: service_healthy
+
+  frontend:
+    build:
+      context: ./frontend
+    container_name: geotrack-frontend
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./frontend/src:/app/src
+    depends_on:
+      - api
+
+  mysql:
+    image: mysql:8.0
+    container_name: geotrack-mysql
+    command: --default-authentication-plugin=mysql_native_password
+    environment:
+      MYSQL_DATABASE: geotrack
+      MYSQL_USER: geotrack
+      MYSQL_PASSWORD: geotrack
+      MYSQL_ROOT_PASSWORD: root
+    ports:
+      - "3307:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./backend/database/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "geotrack", "-pgeotrack"]
+      interval: 4s
+      timeout: 3s
+      retries: 15
+
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.15.0
+    container_name: geotrack-elasticsearch
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - ES_JAVA_OPTS=-Xms512m -Xmx512m
+    ports:
+      - "9200:9200"
+    volumes:
+      - elastic_data:/usr/share/elasticsearch/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -s http://localhost:9200/_cluster/health | grep -q 'cluster_name' || exit 1"]
+      interval: 4s
+      timeout: 3s
+      retries: 15
+
+volumes:
+  mysql_data:
+  elastic_data:
